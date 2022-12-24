@@ -1,6 +1,6 @@
 # %%
 import matplotlib.pyplot as plt
-from functions im8port rosenbrock_np, fit_quadratic, fit_quadratic_2
+from functions import rosenbrock_np, fit_quadratic, fit_quadratic_2
 import numpy as np
 from sklearn.decomposition import PCA
 
