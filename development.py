@@ -127,36 +127,6 @@ def fit_quadratic_2(
     return X0, V, C
 
 
-def fit_quadratic(X, Y):
-    dim = X.shape[1]
-    X = torch.tensor(X)
-    #  xAx + bx + c
-    V = torch.rand(dim, dim).to(torch.float64)
-    b = torch.rand(1, dim).to(torch.float64)
-    c = torch.rand(1).to(torch.float64)
-
-    V.requires_grad = True
-    b.requires_grad = True
-    c.requires_grad = True
-
-    optimizer = torch.optim.Adam([V, b, c], lr=float(1e-2))
-
-    for _ in range(1000):
-        optimizer.zero_grad()
-        loss = 0
-        for x, y in zip(X, Y):
-            p = x @ V @ V.T @ x.T + b @ x.T + c
-            loss = loss + torch.abs(p - y)
-        loss.backward()
-        optimizer.step()
-
-    A = (V @ V.T).detach().numpy()
-    b = b.detach().numpy()
-    c = c.detach().numpy()
-
-    return A, b, c
-
-
 class PolynomialFit:
     def fit(self, X, Y):
         self.pca = PCA(whiten=True).fit(X)
@@ -182,6 +152,7 @@ def variance_alarm(X):
 
 def variance_correct(X):
     # Hardcode
+    # Axes must have variance no less then "VARIANCE_FRACTION" of the maximum:
     VARIANCE_FRACTION = 0.1
 
     # Rotate axes:
@@ -225,14 +196,16 @@ if __name__ == "__main__":
     Y = rosenbrock_np(X)
 
     # %%
-    polyfit = PolynomialFit()
-    fit_x0 = polyfit.fit(X[-MEMORY:, :], Y[-MEMORY:])
+    for i in range(50):
+        polyfit = PolynomialFit()
+        fit_x0 = polyfit.fit(X[-MEMORY:, :], Y[-MEMORY:])
 
-    X = np.vstack([X, fit_x0])
-    X[-MEMORY:, :] = variance_correct(X[-MEMORY:, :])
-    Y = np.hstack([Y, rosenbrock_np(fit_x0)])
-    plt.scatter(X[-MEMORY:, 0], X[-MEMORY:, 1])
-    print(Y[-MEMORY:])
+        X = np.vstack([X, fit_x0])
+        X[-MEMORY:, :] = variance_correct(X[-MEMORY:, :])
+        Y = np.hstack([Y, rosenbrock_np(fit_x0)])
+        plt.scatter(X[-MEMORY:, 0], X[-MEMORY:, 1])
+        plt.show()
+        print(Y[-MEMORY:])
 
 # %% Development of function:
 # xsub = X[-8:, :]
