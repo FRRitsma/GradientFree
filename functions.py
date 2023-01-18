@@ -63,98 +63,104 @@ def inverse_triangle(m: int) -> int:
 
 
 # %%
-import torch
 
 
-def fit_quadratic_2(
-    X,  # Recorded input of iterations
-    Y,  # Recorded output of iterations
-    minimum: float = 0,
-    # Initial guesses:
-    init_X0: torch.Tensor = None,
-    init_V: torch.Tensor = None,
-    init_C: torch.Tensor = None,
-):
-    dim = X.shape[1]
-    X = torch.tensor(X)
+# def fit_quadratic_2(
+#     X,  # Recorded input of iterations
+#     Y,  # Recorded output of iterations
+#     minimum: float = 0,
+#     # Initial guesses:
+#     init_X0: torch.Tensor = None,
+#     init_V: torch.Tensor = None,
+#     init_C: torch.Tensor = None,
+# ):
+#     dim = X.shape[1]
+#     X = torch.tensor(X)
 
-    # Function scope hardcode:
-    LEARNING_RATE = float(1e-1)
-    ITERATIONS = int(5e4)
+#     # Function scope hardcode:
+#     LEARNING_RATE = float(1e-1)
+#     ITERATIONS = int(5e4)
 
-    # Initialize components of function:
-    X0 = (
-        X[Y == np.min(Y), :].ravel().to(torch.float64)
-        if init_X0 is None
-        else torch.Tensor(init_X0).to(torch.float64)
-    )
-    V = (
-        torch.rand(dim, dim).to(torch.float64)
-        if init_V is None
-        else torch.Tensor(init_V).to(torch.float64)
-    )
-    C = (
-        torch.Tensor([np.min(Y)]).to(torch.float64)
-        if init_C is None
-        else torch.Tensor(init_C).to(torch.float64)
-    )
+#     # Initialize components of function:
+#     X0 = (
+#         X[Y == np.min(Y), :].ravel().to(torch.float64)
+#         if init_X0 is None
+#         else torch.Tensor(init_X0).to(torch.float64)
+#     )
+#     V = (
+#         torch.rand(dim, dim).to(torch.float64)
+#         if init_V is None
+#         else torch.Tensor(init_V).to(torch.float64)
+#     )
+#     C = (
+#         torch.Tensor([np.min(Y)]).to(torch.float64)
+#         if init_C is None
+#         else torch.Tensor(init_C).to(torch.float64)
+#     )
 
-    V.requires_grad = True
-    X0.requires_grad = True
-    C.requires_grad = True
+#     V.requires_grad = True
+#     X0.requires_grad = True
+#     C.requires_grad = True
 
-    optimizer = torch.optim.Adam([V, X0, C], lr=LEARNING_RATE)
+#     # Initializing optimizer
+#     if optim_newton:
+#         optimizer = torch.optim.Adam([V, X0, C], lr=LEARNING_RATE)    
+#     else:
+        
+#     optimizer = torch.optim.LBFGS([V, X0, C])
+    
+#     loss = 0
+#     # Fit parameters to data:
+#     for _ in range(ITERATIONS):
+#         # Decrease learning rate over time:
+#         if _ % 1000 == 0:
+#             LEARNING_RATE = max(LEARNING_RATE / 10, float(1e-5))
+#             print(loss)
+#         optimizer.zero_grad()
+#         loss = 0
+#         for x, y in zip(X, Y):
+#             p = (
+#                 (x - X0) @ V @ V.T @ (x.T - X0.T)
+#                 + torch.abs(C)
+#                 + torch.Tensor([minimum])
+#             )
+#             loss = loss + torch.abs(p - y)
+#         loss.backward()
+#         optimizer.step()
 
-    # Fit parameters to data:
-    for _ in range(ITERATIONS):
-        # Decrease learning rate over time:
-        if _ % 1000 == 0:
-            LEARNING_RATE = max(LEARNING_RATE / 10, float(1e-5))
-        optimizer.zero_grad()
-        loss = 0
-        for x, y in zip(X, Y):
-            p = (
-                (x - X0) @ V @ V.T @ (x.T - X0.T)
-                + torch.abs(C)
-                + torch.Tensor([minimum])
-            )
-            loss = loss + torch.abs(p - y)
-        loss.backward()
-        optimizer.step()
-
-    # Convert types to numpy for output:
-    X0 = X0.detach().numpy()
-    V = V.detach().numpy()
-    C = torch.abs(C).detach().numpy() + minimum
-    print(loss)
-    return X0, V, C
+#     # Convert types to numpy for output:
+#     X0 = X0.detach().numpy()
+#     V = V.detach().numpy()
+#     C = torch.abs(C).detach().numpy() + minimum
+#     print(loss)
+#     return X0, V, C
 
 
-def fit_quadratic(X, Y):
-    dim = X.shape[1]
-    X = torch.tensor(X)
-    #  xAx + bx + c
-    V = torch.rand(dim, dim).to(torch.float64)
-    b = torch.rand(1, dim).to(torch.float64)
-    c = torch.rand(1).to(torch.float64)
+# def fit_quadratic(X, Y):
+#     dim = X.shape[1]
+#     X = torch.tensor(X)
+#     #  xAx + bx + c
+#     V = torch.rand(dim, dim).to(torch.float64)
+#     b = torch.rand(1, dim).to(torch.float64)
+#     c = torch.rand(1).to(torch.float64)
 
-    V.requires_grad = True
-    b.requires_grad = True
-    c.requires_grad = True
+#     V.requires_grad = True
+#     b.requires_grad = True
+#     c.requires_grad = True
 
-    optimizer = torch.optim.Adam([V, b, c], lr=float(1e-2))
+#     optimizer = torch.optim.Adam([V, b, c], lr=float(1e-2))
 
-    for _ in range(1000):
-        optimizer.zero_grad()
-        loss = 0
-        for x, y in zip(X, Y):
-            p = x @ V @ V.T @ x.T + b @ x.T + c
-            loss = loss + torch.abs(p - y)
-        loss.backward()
-        optimizer.step()
+#     for _ in range(1000):
+#         optimizer.zero_grad()
+#         loss = 0
+#         for x, y in zip(X, Y):
+#             p = x @ V @ V.T @ x.T + b @ x.T + c
+#             loss = loss + torch.abs(p - y)
+#         loss.backward()
+#         optimizer.step()
 
-    A = (V @ V.T).detach().numpy()
-    b = b.detach().numpy()
-    c = c.detach().numpy()
+#     A = (V @ V.T).detach().numpy()
+#     b = b.detach().numpy()
+#     c = c.detach().numpy()
 
-    return A, b, c
+#     return A, b, c
