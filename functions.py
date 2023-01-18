@@ -3,7 +3,6 @@ import numpy as np
 import cvcx
 
 
-
 def rosenbrock_np(xy: np.ndarray) -> np.ndarray:
     xy = xy.reshape(-1, 2)
     return rosenbrock(xy[:, 0], xy[:, 1])
@@ -63,4 +62,49 @@ def inverse_triangle(m: int) -> int:
     return int((2 * m + 1 / 4) ** (1 / 2) - 1 / 2)
 
 
-# %%
+def variance_alarm(X):
+    # Hardcode:
+    VARIANCE_FRACTION = 0.1
+
+    # Fit pca to noise
+    x_t = PCA().fit_transform(X)
+    var = np.var(x_t, axis=0)
+    if np.min(var) / np.max(var) < VARIANCE_FRACTION:
+        return False
+    return True
+
+
+def variance_correct(X):
+    # Hardcode
+    # Axes must have variance no less then "VARIANCE_FRACTION" of the maximum:
+    VARIANCE_FRACTION = 0.1
+
+    # Rotate axes:
+    pca = PCA()
+    pca.fit(X)
+    T = pca.transform(X)
+
+    # Investigate the biggest variance:
+    var = np.var(T, axis=0)
+    mean = np.mean(T, axis=0)
+    row = T[-1, :]
+    N = T.shape[0]
+
+    # Correct where variance is lacking:
+    for i, (v, m) in enumerate(zip(var, mean)):
+        if v < np.max(var) * VARIANCE_FRACTION:
+            print("CORRECTION")
+            # Remove variance added by last row:
+            last_row_var = ((row[i] - m) ** 2) / N
+            # Corrected variance:
+            corrected_var = v - last_row_var
+            # How much variance must be added by last row:
+            target_var = np.max(var) * VARIANCE_FRACTION - corrected_var
+            # How much distance:
+            target_distance = (target_var * N) ** (1 / 2)
+            # Decrease distance from mean, not sign:
+            sign = np.sign(row[i] - m)
+            T[-1, i] = m + target_distance * sign
+
+    # Reverse transform and return:
+    return pca.inverse_transform(T)

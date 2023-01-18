@@ -1,11 +1,10 @@
 # %%
 import cvxpy as cp
 import numpy as np
-from functions import parameter_count, triangle
+#from functions import parameter_count, triangle
 from sklearn.neighbors import NearestNeighbors
 from itertools import combinations_with_replacement
-from functions import rosenbrock_np
-from development import variance_correct
+#from functions import rosenbrock_np
 import time
 from math import prod
 
@@ -41,11 +40,7 @@ def demo():
     return result, intercept, slope
 
 
-def parameters_dim_degree(dim: int, degree: int) -> int:
-    n_parameters = sum(
-        1 for _ in combinations_with_replacement(list(range(dim + 1)), degree)
-    )
-    return n_parameters
+
 
 
 def fill_row_with_variables_v2(x, degree: int = 2):

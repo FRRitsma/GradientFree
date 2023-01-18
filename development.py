@@ -1,7 +1,43 @@
 # %%
+from dataclasses import dataclass
+from itertools import combinations_with_replacement
+from math import prod
+import time
+import cvxpy as cp
 import numpy as np
-import torch
-from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+from sklearn.neighbors import NearestNeighbors
+
+
+def find_optimal_point(
+    x: np.ndarray,
+    pol: Polynomial,
+    step_size: float = float(1e-1),
+    n_samples: int = int(2e4),
+) -> np.ndarray:
+
+    # Settings:
+    search_range_min = np.min(x, axis=0) - step_size
+    search_range_max = np.max(x, axis=0) + step_size
+
+    # Generate samples:
+    samples = search_range_min + np.random.rand(n_samples, x.shape[1]) * (
+        search_range_max - search_range_min
+    )
+
+    # Filter by proximity:
+    knn = NearestNeighbors(n_neighbors=1)
+    knn.fit(x)
+    distance, _ = knn.kneighbors(samples)
+    samples = samples[np.squeeze(distance) < step_size, :]
+
+    # Get scores:
+    scores = pol.predict(samples)
+
+    # Get best sample:
+    best_sample = samples[scores == min(scores), :]
+
+    return best_sample
 
 
 def rosenbrock_np(xy: np.ndarray) -> np.ndarray:
@@ -15,192 +51,129 @@ def rosenbrock(x: float, y: float) -> float:
     return (a - x) ** 2 + b * (y - x**2) ** 2
 
 
-def triangle(m: int) -> int:
-    """Generate the triangle number, i.e.: 1 + 2 + ... + m for input m
+def parameters_dim_degree(dim: int, degree: int) -> int:
+    """How many parameters are needed to fit a polynomial of given degree
+    and dimension
 
     Args:
-        m (int): End of sequence
+        dim (int): Dimension of input data
+        degree (int): Degree of polynomial
 
     Returns:
-        int: Sum of integers until m
+        int: Amount of parameters needed to form polynomial function
     """
-    return int((m * (m + 1)) / 2)
+    n_parameters = sum(
+        1 for _ in combinations_with_replacement(list(range(dim + 1)), degree)
+    )
+    return n_parameters
 
 
-def parameter_count(dimension: int) -> int:
-    """Amount of parameters for a polynomial of given dimension
+def max_degree(shape: tuple):
+    assert type(shape) is tuple, "Input must be shapelike"
+    assert len(shape) == 2, "Data must be two dimensional"
 
-    Args:
-        dimension (int): Dimension of quadratic polynomial
+    n_samples = shape[0]
+    dim = shape[1]
 
-    Returns:
-        int: Amount of parameters required for quadratic polynomial in given
-        dimension
-    """
-    return 1 + dimension + triangle(dimension)
+    for degree in range(n_samples):
+        if parameters_dim_degree(dim, degree) > n_samples:
+            break
+    degree = max(degree - 1, 0)
 
-
-def max_dimension_count(no_samples: int) -> int:
-    """The maximum dimension for which a quadratic function can be fitted
-    for the given amount of samples
-
-    Args:
-        no_samples (int): Amount of samples of function to be fitted
-
-    Returns:
-        int: Maximum dimension for which sufficient data exists
-    """
-    # Function scope hardcode:
-    MAX_DIMENSION = 1000
-    # Return if requried parameters exceed amount of samples:
-    for i in range(MAX_DIMENSION):
-        if parameter_count(i) > no_samples:
-            return i - 1
-    return i
+    return degree
 
 
-def inverse_triangle(m: int) -> int:
-    return int((2 * m + 1 / 4) ** (1 / 2) - 1 / 2)
+def fill_row_with_variables(x, degree: int = 2):
+    dim = len(x)
+    x = np.hstack([np.squeeze(x), [1]])
+    a = np.empty([parameters_dim_degree(dim, degree)])
+    for i, vars in enumerate(combinations_with_replacement(x, degree)):
+        a[i] = prod(vars)
+    return a
 
 
-def generate_parameters(X, Y):
+def form_exponents(x: np.ndarray, degree: int = 2) -> np.ndarray:
+    assert len(x.shape) == 2, "Input x must be two dimensional."
+    assert degree > -1, "Degree must be larger than zero"
+    X = np.empty([x.shape[0], parameters_dim_degree(x.shape[1], degree)])
 
-    no_samples = X.shape[0]
-    dim = X.shape[1]
+    # for index, row in enumerate(x):
+    #     X[index, :] = fill_row_with_variables(row, degree)
 
-    # Declaring quadratic:
-    used_samples = max_dimension_count(no_samples)
-    used_samples = min(used_samples, dim)
-    X0 = X[Y == np.min(Y), :]
-    X0 = X0[0, :]
-    X0 = X0.ravel().to(torch.float64)
-    V = torch.rand(dim, used_samples).to(torch.float64)
-    C = torch.Tensor([0]).to(torch.float64)
+    x = np.hstack([x, np.ones((x.shape[0], 1))])
+    for i, vars in enumerate(combinations_with_replacement(x.T, degree)):
+        X[:, i] = prod(vars)
 
-    V.requires_grad = True
-    X0.requires_grad = True
-    C.requires_grad = True
-    no_samples = no_samples - used_samples
-
-    if no_samples < 3:
-        return X0, V, C
-
-    used_samples = max_dimension_count(no_samples)
-    used_samples = min(used_samples, dim)
-    X0_1 = X[Y == np.min(Y), :]
-    X0_1 = X0_1[0, :]
-    X0_1 = X0_1.ravel().to(torch.float64)
-    V_1 = torch.rand(dim, used_samples).to(torch.float64)
-    C_1 = torch.Tensor([0]).to(torch.float64)
-
-    V_1.requires_grad = True
-    X0_1.requires_grad = True
-    C_1.requires_grad = True
-
-    return X0, V, C, X0_1, V_1, C_1
+    return X
 
 
-def loss_function_2(X, Y, X0, V, C):
-    loss = 0
-    for x, y in zip(X, Y):
-        p = (x - X0) @ V @ V.T @ (x.T - X0.T) + torch.abs(C)
-        loss = loss + torch.abs(p - y)
-    return loss
+@dataclass
+class Polynomial:
+    coefficients: np.ndarray = None
+    degree: int = None
+
+    def fit(self, X: np.ndarray, Y: np.ndarray, degree: int) -> None:
+        exponents = form_exponents(X, degree)
+        constants = cp.Variable(exponents.shape[1])
+        objective = cp.Minimize(0.5 * cp.sum_squares(exponents @ constants - Y.ravel()))
+        prob = cp.Problem(objective)
+
+        try:
+            prob.solve(solver=cp.ECOS)
+        except cp.error.SolverError:
+            prob.solve(solver=cp.SCS)
+
+        # Assign to self:
+        self.degree = degree
+        self.coefficients = constants.value
+
+    def predict(self, X) -> np.ndarray:
+        assert (
+            self.degree is not None and self.coefficients is not None
+        ), "Polynomial object has not been fitted"
+        exponents = form_exponents(X, self.degree)
+        return exponents @ self.coefficients
 
 
-# (x-X0)*A*(x-X0)*(x*B*x + Ct*x + D) +
+# Creating fit
 
+x = np.random.rand(20, 2)
+y = 2 * x[:, 0] ** 2 + 3 * x[:, 1] ** 2 + 2 * x[:, 0] + 3
 
-def loss_function(X, Y, params):
-    loss = 0
-    X0 = params[0]
-    V = params[1]
-    C = params[2]
+poly = Polynomial()
+poly.fit(x, y, degree=max_degree(x.shape))
 
-    for x, y in zip(X, Y):
-        p = (x - X0) @ V @ V.T @ (x.T - X0.T)
-        if len(params) > 3:
-            X0_1 = params[3]
-            V_1 = params[4]
-            C_1 = params[5]
-            p = p * ((x - X0_1) @ V_1 @ V_1.T @ (x.T - X0_1.T) + C_1**2)
-        p = p + C**2
-        loss = loss + torch.abs(p - y)
-    return loss
-
-
-
-def variance_alarm(X):
-    # Hardcode:
-    VARIANCE_FRACTION = 0.1
-
-    # Fit pca to noise
-    x_t = PCA().fit_transform(X)
-    var = np.var(x_t, axis=0)
-    if np.min(var) / np.max(var) < VARIANCE_FRACTION:
-        return False
-    return True
-
-
-def variance_correct(X):
-    # Hardcode
-    # Axes must have variance no less then "VARIANCE_FRACTION" of the maximum:
-    VARIANCE_FRACTION = 0.1
-
-    # Rotate axes:
-    pca = PCA()
-    pca.fit(X)
-    T = pca.transform(X)
-
-    # Investigate the biggest variance:
-    var = np.var(T, axis=0)
-    mean = np.mean(T, axis=0)
-    row = T[-1, :]
-    N = T.shape[0]
-
-    # Correct where variance is lacking:
-    for i, (v, m) in enumerate(zip(var, mean)):
-        if v < np.max(var) * VARIANCE_FRACTION:
-            print("CORRECTION")
-            # Remove variance added by last row:
-            last_row_var = ((row[i] - m) ** 2) / N
-            # Corrected variance:
-            corrected_var = v - last_row_var
-            # How much variance must be added by last row:
-            target_var = np.max(var) * VARIANCE_FRACTION - corrected_var
-            # How much distance:
-            target_distance = (target_var * N) ** (1 / 2)
-            # Decrease distance from mean, not sign:
-            sign = np.sign(row[i] - m)
-            T[-1, i] = m + target_distance * sign
-
-    # Reverse transform and return:
-    return pca.inverse_transform(T)
-
+print(form_exponents(x, degree=max_degree(x.shape)))
+# print(poly.predict(x), y)
+# Testing
 
 # %%
-if __name__ == "__main__":
-    # %% Initialize iteration points:
-    MEMORY = 40
-    n = 3
-    X = 4 * np.random.rand(1, 2) - np.array([2, 1])
-    X = X + float(1e-1) * np.random.rand(n, 2)
-    Y = rosenbrock_np(X)
+MEMORY = 8
+n = 3
+X = 4 * np.random.rand(1, 2) - np.array([2, 1])
+X = X + float(1e-1) * np.random.rand(n, 2)
+Y = rosenbrock_np(X)
 
-    # %%
-    import matplotlib.pyplot as plt
+plt.scatter(X[:, 0], X[:, 1], c=Y)
+plt.show()
+print(Y[-MEMORY:])
 
-    for i in range(1000):
-        # polyfit = PolynomialFit()
-        fit_x0, vs, _ = fit_quadratic_2(X[-MEMORY:, :], Y[-MEMORY:])
-        X = np.vstack([X, fit_x0])
-        X[-MEMORY:, :] = variance_correct(X[-MEMORY:, :])
-        Y = np.hstack([Y, rosenbrock_np(fit_x0)])
-        plt.scatter(X[-MEMORY:, 0], X[-MEMORY:, 1], c=Y[-MEMORY:])
-        plt.show()
-        print(Y[-MEMORY:])
+for i in range(100):
+    pol = Polynomial()
+    pol.fit(X, Y, degree=max_degree(X.shape))
+    x_best = find_optimal_point(
+        X[-MEMORY:, :],
+        pol,
+        step_size=0.5,
+        n_samples=int(1e5),
+    )
 
+    X = np.vstack([X, x_best])
+    # X[-MEMORY:, :] = variance_correct(X[-MEMORY:, :])
 
-# %% Development of function:
-# xsub = X[-8:, :]
-VARIANCE_FRACTION = 0.1
+    Y = np.hstack([Y, rosenbrock_np(X[-1, :])])
+    time.sleep(0.5)
+
+    plt.scatter(X[:, 0], X[:, 1], c=Y)
+    plt.show()
+    print(Y[-1])
