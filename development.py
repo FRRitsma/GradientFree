@@ -7,6 +7,45 @@ import cvxpy as cp
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.neighbors import NearestNeighbors
+import math
+
+
+def rastrigin(*X, **kwargs):
+    A = kwargs.get("A", 10)
+    return A + sum([(x**2 - A * np.cos(2 * math.pi * x)) for x in X])
+
+
+@dataclass
+class Polynomial:
+    coefficients: np.ndarray = None
+    degree: int = None
+
+    def fit(self, X: np.ndarray, Y: np.ndarray, degree: int) -> None:
+        exponents = form_exponents(X, degree)
+        constants = cp.Variable(exponents.shape[1])
+        objective = cp.Minimize(
+            0.5
+            * cp.sum_squares(
+                exponents @ constants - Y.ravel(),
+            )
+        )
+        prob = cp.Problem(objective)
+
+        try:
+            prob.solve(solver=cp.ECOS)
+        except cp.error.SolverError:
+            prob.solve(solver=cp.SCS)
+
+        # Assign to self:
+        self.degree = degree
+        self.coefficients = constants.value
+
+    def predict(self, X) -> np.ndarray:
+        assert (
+            self.degree is not None and self.coefficients is not None
+        ), "Polynomial object has not been fitted"
+        exponents = form_exponents(X, self.degree)
+        return exponents @ self.coefficients
 
 
 def find_optimal_point(
@@ -107,34 +146,6 @@ def form_exponents(x: np.ndarray, degree: int = 2) -> np.ndarray:
     return X
 
 
-@dataclass
-class Polynomial:
-    coefficients: np.ndarray = None
-    degree: int = None
-
-    def fit(self, X: np.ndarray, Y: np.ndarray, degree: int) -> None:
-        exponents = form_exponents(X, degree)
-        constants = cp.Variable(exponents.shape[1])
-        objective = cp.Minimize(0.5 * cp.sum_squares(exponents @ constants - Y.ravel()))
-        prob = cp.Problem(objective)
-
-        try:
-            prob.solve(solver=cp.ECOS)
-        except cp.error.SolverError:
-            prob.solve(solver=cp.SCS)
-
-        # Assign to self:
-        self.degree = degree
-        self.coefficients = constants.value
-
-    def predict(self, X) -> np.ndarray:
-        assert (
-            self.degree is not None and self.coefficients is not None
-        ), "Polynomial object has not been fitted"
-        exponents = form_exponents(X, self.degree)
-        return exponents @ self.coefficients
-
-
 # Creating fit
 
 x = np.random.rand(20, 2)
@@ -152,26 +163,28 @@ MEMORY = 8
 n = 3
 X = 4 * np.random.rand(1, 2) - np.array([2, 1])
 X = X + float(1e-1) * np.random.rand(n, 2)
-Y = rosenbrock_np(X)
+# Y = rosenbrock_np(X)
+Y = rastrigin(X[:, 0], X[:, 1])
 
 plt.scatter(X[:, 0], X[:, 1], c=Y)
 plt.show()
 print(Y[-MEMORY:])
 
-for i in range(100):
+for i in range(1000):
     pol = Polynomial()
     pol.fit(X, Y, degree=max_degree(X.shape))
     x_best = find_optimal_point(
         X[-MEMORY:, :],
         pol,
-        step_size=0.5,
+        step_size=1,
         n_samples=int(1e5),
     )
 
     X = np.vstack([X, x_best])
     # X[-MEMORY:, :] = variance_correct(X[-MEMORY:, :])
 
-    Y = np.hstack([Y, rosenbrock_np(X[-1, :])])
+    # Y = np.hstack([Y, rosenbrock_np(X[-1, :])])
+    Y = np.hstack([Y, rastrigin(X[-1, 0], X[-1, 1])])
     time.sleep(0.5)
 
     plt.scatter(X[:, 0], X[:, 1], c=Y)
